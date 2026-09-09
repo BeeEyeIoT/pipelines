@@ -78,10 +78,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write MCUboot signing key
-        if: ${{ secrets.mcuboot_key_pem != '' }}
+        env:
+          MCUBOOT_KEY_PEM: ${{ secrets.mcuboot_key_pem }}
         run: |
-          echo "${{ secrets.mcuboot_key_pem }}" > key.pem
-          chmod 600 key.pem
+          if [ -n "$MCUBOOT_KEY_PEM" ]; then
+            echo "$MCUBOOT_KEY_PEM" > key.pem
+            chmod 600 key.pem
+          fi
 
       - name: Build (west build via nrfutil toolchain)
         run: |
