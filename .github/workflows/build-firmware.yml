@@ -1,0 +1,111 @@
+name: Build firmware
+
+on:
+  workflow_call:
+    inputs:
+      ncs_version:
+        description: nRF Connect SDK version to use. Selects the build-base image tag pulled from GHCR.
+        required: true
+        type: string
+      board:
+        description: west build board target, e.g. weight_sensor/nrf54l15/cpuapp
+        required: true
+        type: string
+      app_dir:
+        description: Path to the application source, relative to the repo root
+        required: false
+        type: string
+        default: .
+      build_dir:
+        description: Path to the west build output directory, relative to the repo root
+        required: false
+        type: string
+        default: build
+      extra_west_args:
+        description: Extra arguments appended to the west build invocation (after the CMake --)
+        required: false
+        type: string
+        default: ''
+      base_image:
+        description: 'build-base image, without tag (default: ghcr.io/<org>/build-base)'
+        required: false
+        type: string
+        default: ''
+      artifact_name:
+        description: Name of the workflow artifact that build output is uploaded as
+        required: false
+        type: string
+        default: firmware
+      artifact_paths:
+        description: Newline-separated list of build output files/globs to publish as the artifact. Update this if build_dir is customized.
+        required: false
+        type: string
+        default: |
+          build/zephyr/zephyr.signed.bin
+          build/dfu_application.zip
+    secrets:
+      mcuboot_key_pem:
+        description: MCUboot signing key (PEM), written to key.pem at the repo root before building
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Compute lowercase image name
+        id: image
+        run: |
+          name="${{ inputs.base_image }}"
+          if [ -z "$name" ]; then
+            name="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/build-base"
+          fi
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write MCUboot signing key
+        if: ${{ secrets.mcuboot_key_pem != '' }}
+        run: |
+          echo "${{ secrets.mcuboot_key_pem }}" > key.pem
+          chmod 600 key.pem
+
+      - name: Build (west build via nrfutil toolchain)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            "${{ steps.image.outputs.name }}:${{ inputs.ncs_version }}" \
+            bash -c ' \
+              set -eux; \
+              nrfutil sdk-manager toolchain launch \
+                --ncs-version "$NCS_VERSION" \
+                --install-dir "$NCS_INSTALL_DIR" \
+                --chdir "$NCS_INSTALL_DIR/$NCS_VERSION" \
+                -- west build -b "${{ inputs.board }}" -s "${{ inputs.app_dir }}" -d "${{ inputs.build_dir }}" \
+                -- -DBOARD_ROOT=/workspace -DCMAKE_BUILD_TYPE=MinSizeRel ${{ inputs.extra_west_args }} \
+            '
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f key.pem
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.artifact_paths }}
+          if-no-files-found: error

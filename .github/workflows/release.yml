@@ -1,0 +1,34 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ncs_version:
+        description: nRF Connect SDK version to build against (selects the build-base image tag)
+        required: true
+        default: v3.1.1
+      board:
+        description: west build board target, e.g. weight_sensor/nrf54l15/cpuapp
+        required: true
+      version:
+        description: 'Release version, without the leading "v" (default: CalVer YYYY.MM.DD.<run_number>)'
+        required: false
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-firmware.yml
+    with:
+      ncs_version: ${{ inputs.ncs_version }}
+      board: ${{ inputs.board }}
+    secrets:
+      mcuboot_key_pem: ${{ secrets.MCUBOOT_KEY_PEM }}
+
+  release:
+    needs: build
+    uses: ./.github/workflows/release-firmware.yml
+    with:
+      version: ${{ inputs.version }}

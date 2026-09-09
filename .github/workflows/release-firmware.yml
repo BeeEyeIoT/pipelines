@@ -1,0 +1,56 @@
+name: Release firmware
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: Name of the workflow artifact (produced by build-firmware.yml) to publish
+        required: false
+        type: string
+        default: firmware
+      version:
+        description: 'Release version/tag, without the leading "v" (default: CalVer YYYY.MM.DD.<run_number>)'
+        required: false
+        type: string
+        default: ''
+      draft:
+        description: Create the release as a draft
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: Mark the release as a prerelease
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist
+
+      - name: Compute release version
+        id: version
+        run: |
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then
+            version="$(date -u +%Y.%m.%d).${{ github.run_number }}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: dist/**
