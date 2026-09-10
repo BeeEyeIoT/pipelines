@@ -32,7 +32,7 @@ RUN set -eux; \
 	chmod 755 /usr/local/bin/nrfutil; \
 	nrfutil install sdk-manager --force
 
-FROM nrfutil AS buld_base
+FROM nrfutil AS build-base
 # Install the NCS SDK + matching toolchain into NCS_INSTALL_DIR
 ARG NCS_VERSION=v3.1.1
 ARG NCS_INSTALL_DIR=/opt/nrf
