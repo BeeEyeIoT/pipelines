@@ -47,11 +47,10 @@ on:
         type: string
         default: firmware
       artifact_paths:
-        description: Newline-separated list of build output files/globs to publish as the artifact, relative to build_dir.
+        description: Newline-separated list of build output files/globs to publish as the artifact, relative to build_dir
         required: false
         type: string
-        default: |
-          zephyr/zephyr.signed.bin
+        default: |          
           dfu_application.zip
     secrets:
       mcuboot_key_pem:
@@ -122,23 +121,24 @@ jobs:
           BOARD: ${{ inputs.board }}
           APP_DIR: ${{ inputs.app_dir }}
           BUILD_DIR: ${{ inputs.build_dir }}
-          BOARD_ROOT: ${{ inputs.board_root }}
+          BOARD_ROOT_INPUT: ${{ inputs.board_root }}
           BUILD_TYPE: ${{ steps.build_type.outputs.value }}
           EXTRA_WEST_ARGS: ${{ inputs.extra_west_args }}
-        run: |
+        run: |          
           docker run --rm \
             -v "${WORKSPACE}:/workspace" \
             -w /workspace \
-            -e BOARD -e APP_DIR -e BUILD_DIR -e BOARD_ROOT -e BUILD_TYPE -e EXTRA_WEST_ARGS \
+            -e BOARD -e APP_DIR -e BUILD_DIR -e BOARD_ROOT_INPUT -e BUILD_TYPE -e EXTRA_WEST_ARGS \
             "${IMAGE}" \
             bash -c ' \
               set -eux; \
+              BOARD_ROOT_ABS=$(cd "/workspace/$BOARD_ROOT_INPUT" && pwd); \
               nrfutil sdk-manager toolchain launch \
                 --ncs-version "$NCS_VERSION" \
                 --install-dir "$NCS_INSTALL_DIR" \
                 --chdir "$NCS_INSTALL_DIR/$NCS_VERSION" \
                 -- west build -b "$BOARD" -s "/workspace/$APP_DIR" -d "/workspace/$BUILD_DIR" \
-                -- -DBOARD_ROOT="/workspace/$BOARD_ROOT" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $EXTRA_WEST_ARGS \
+                -- -DBOARD_ROOT="$BOARD_ROOT_ABS" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $EXTRA_WEST_ARGS \
             '
 
       - name: Remove signing key

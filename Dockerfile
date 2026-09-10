@@ -36,7 +36,20 @@ FROM nrfutil AS build-base
 # Install the NCS SDK + matching toolchain into NCS_INSTALL_DIR
 ARG NCS_VERSION=v3.1.1
 ARG NCS_INSTALL_DIR=/opt/nrf
-RUN set -eux; \	
+RUN set -eux; \
 	nrfutil sdk-manager install "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}"
 ENV NCS_VERSION=${NCS_VERSION}
 ENV NCS_INSTALL_DIR=${NCS_INSTALL_DIR}
+
+FROM build-base AS build-base-zb-r23
+# Add the Zigbee R23 add-on on top of the NCS SDK and toolchain
+# NB: Zigbee R23 add-on releases require specific NCS versions
+# so ZB_R23_VERSION and NCS_VERSION must be a matching pair
+ARG ZB_R23_VERSION=v1.4.0
+RUN set -eux; \
+	git clone --branch "${ZB_R23_VERSION}" --depth 1 https://github.com/nrfconnect/ncs-zigbee "${NCS_INSTALL_DIR}/${NCS_VERSION}/ncs-zigbee"; \
+	nrfutil sdk-manager toolchain launch \
+		--ncs-version "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}" \
+		--chdir "${NCS_INSTALL_DIR}/${NCS_VERSION}" \
+		-- bash -c 'west config manifest.path ncs-zigbee && west update'
+ENV ZB_R23_VERSION=${ZB_R23_VERSION}
