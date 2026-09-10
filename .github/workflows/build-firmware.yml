@@ -22,7 +22,7 @@ on:
         type: string
         default: build
       board_root:
-        description: Path to the root folder with custom board definitions (folder containing boards folder)
+        description: Path to the root folder with custom board definitions, relative to the repo root
         required: false
         type: string
         default: .
@@ -103,8 +103,8 @@ jobs:
                 --ncs-version "$NCS_VERSION" \
                 --install-dir "$NCS_INSTALL_DIR" \
                 --chdir "$NCS_INSTALL_DIR/$NCS_VERSION" \
-                -- west build -b "${{ inputs.board }}" -s "${{ inputs.app_dir }}" -d "${{ inputs.build_dir }}" \
-                -- -DBOARD_ROOT="${{ inputs.board_root }}" -DCMAKE_BUILD_TYPE=MinSizeRel ${{ inputs.extra_west_args }} \
+                -- west build -b "${{ inputs.board }}" -s "workspace/${{ inputs.app_dir }}" -d "workspace/${{ inputs.build_dir }}" \
+                -- -DBOARD_ROOT="workspace/${{ inputs.board_root }}" -DCMAKE_BUILD_TYPE=MinSizeRel ${{ inputs.extra_west_args }} \
             '
 
       - name: Remove signing key
