@@ -1,3 +1,10 @@
+# Reusable pipelines for BeeEye firmware projects
+
+Work in progress
+
+## Usage
+
+```yaml
 name: release
 
 on:
@@ -32,3 +39,4 @@ jobs:
     uses: ./.github/workflows/release-firmware.yml
     with:
       version: ${{ inputs.version }}
+```

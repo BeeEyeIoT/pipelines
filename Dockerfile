@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM debian:trixie AS build-base
+FROM debian:trixie AS nrfutil
 
 # Host packages not covered by the NCS toolchain bundle installed below
 ARG DEBIAN_FRONTEND=noninteractive
@@ -16,7 +16,7 @@ RUN set -eux; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*
 
-# nRF Util: Nordic's CLI, used below to install the nRF Connect SDK
+# Install nrfutil and use it to install sdk-manager
 ARG TARGETARCH
 RUN set -eux; \
 	case "${TARGETARCH}" in \
@@ -29,13 +29,14 @@ RUN set -eux; \
 	curl -fsSL -o /tmp/nrfutil.sha256 "${base_url}/nrfutil.sha256"; \
 	echo "$(cat /tmp/nrfutil.sha256)  /usr/local/bin/nrfutil" | sha256sum -c -; \
 	rm -f /tmp/nrfutil.sha256; \
-	chmod 755 /usr/local/bin/nrfutil
+	chmod 755 /usr/local/bin/nrfutil; \
+	nrfutil install sdk-manager --force
 
-# Install sdk-manager, then use it to install the NCS SDK + matching toolchain into NCS_INSTALL_DIR
+FROM nrfutil AS buld_base
+# Install the NCS SDK + matching toolchain into NCS_INSTALL_DIR
 ARG NCS_VERSION=v3.1.1
 ARG NCS_INSTALL_DIR=/opt/nrf
-RUN set -eux; \
-	nrfutil install sdk-manager --force; \
+RUN set -eux; \	
 	nrfutil sdk-manager install "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}"
 ENV NCS_VERSION=${NCS_VERSION}
 ENV NCS_INSTALL_DIR=${NCS_INSTALL_DIR}
