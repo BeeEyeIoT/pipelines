@@ -82,6 +82,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Pull build_base image
+        run: |
+          docker pull "${{ steps.image.outputs.name }}:${{ inputs.ncs_version }}"          
+
       - name: Write MCUboot signing key
         env:
           MCUBOOT_KEY_PEM: ${{ secrets.mcuboot_key_pem }}
@@ -90,6 +94,7 @@ jobs:
             echo "$MCUBOOT_KEY_PEM" > key.pem
             chmod 600 key.pem
           fi
+
 
       - name: Build (west build via nrfutil toolchain)
         run: |
