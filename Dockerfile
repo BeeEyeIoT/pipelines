@@ -42,6 +42,18 @@ RUN set -eux; \
 
 ENV NCS_VERSION=${NCS_VERSION}
 ENV NCS_INSTALL_DIR=${NCS_INSTALL_DIR}
+ENV ZEPHYR_BASE=${NCS_INSTALL_DIR}/${NCS_VERSION}/zephyr
+
+# Put west and toolchain on PATH and register with CMake
+RUN set -eux; \
+	nrfutil sdk-manager toolchain env \
+		--ncs-version "${NCS_VERSION}" \
+		--install-dir "${NCS_INSTALL_DIR}" \
+		--as-script sh > /etc/profile.d/nrf-toolchain.sh; \
+	echo "export ZEPHYR_BASE=${ZEPHYR_BASE}" >> /etc/profile.d/nrf-toolchain.sh; \
+	export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"; \
+	. /etc/profile.d/nrf-toolchain.sh; \
+	cd "${NCS_INSTALL_DIR}/${NCS_VERSION}" && west zephyr-export
 
 FROM build-base AS build-base-zb-r23
 # Add the Zigbee R23 add-on on top of the NCS SDK and toolchain
