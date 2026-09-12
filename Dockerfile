@@ -37,7 +37,9 @@ FROM nrfutil AS build-base
 ARG NCS_VERSION=v3.1.1
 ARG NCS_INSTALL_DIR=/opt/nrf
 RUN set -eux; \
-	nrfutil sdk-manager install "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}"
+	nrfutil sdk-manager install "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}" && \
+	rm -rf "${NCS_INSTALL_DIR}/downloads"
+
 ENV NCS_VERSION=${NCS_VERSION}
 ENV NCS_INSTALL_DIR=${NCS_INSTALL_DIR}
 
