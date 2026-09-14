@@ -38,6 +38,7 @@ ARG NCS_VERSION=v3.1.1
 ARG NCS_INSTALL_DIR=/opt/nrf
 RUN set -eux; \
 	nrfutil sdk-manager install "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}" && \
+	find "${NCS_INSTALL_DIR}" -type d -name '.git' -prune -exec rm -rf {} + && \
 	rm -rf "${NCS_INSTALL_DIR}/downloads"
 
 ENV NCS_VERSION=${NCS_VERSION}
@@ -65,5 +66,6 @@ RUN set -eux; \
 	nrfutil sdk-manager toolchain launch \
 		--ncs-version "${NCS_VERSION}" --install-dir "${NCS_INSTALL_DIR}" \
 		--chdir "${NCS_INSTALL_DIR}/${NCS_VERSION}" \
-		-- bash -c 'west config manifest.path ncs-zigbee && west update'
+		-- bash -c 'west config manifest.path ncs-zigbee && west update'; \
+	find "${NCS_INSTALL_DIR}" -type d -name '.git' -prune -exec rm -rf {} +
 ENV ZB_R23_VERSION=${ZB_R23_VERSION}
