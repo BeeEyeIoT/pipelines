@@ -43,6 +43,7 @@ RUN set -eux; \
 ENV NCS_VERSION=${NCS_VERSION}
 ENV NCS_INSTALL_DIR=${NCS_INSTALL_DIR}
 ENV ZEPHYR_BASE=${NCS_INSTALL_DIR}/${NCS_VERSION}/zephyr
+ENV LD_LIBRARY_PATH=""
 
 # Put west and toolchain on PATH and register with CMake
 RUN set -eux; \
@@ -51,7 +52,6 @@ RUN set -eux; \
 		--install-dir "${NCS_INSTALL_DIR}" \
 		--as-script sh > /etc/profile.d/nrf-toolchain.sh; \
 	echo "export ZEPHYR_BASE=${ZEPHYR_BASE}" >> /etc/profile.d/nrf-toolchain.sh; \
-	export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"; \
 	. /etc/profile.d/nrf-toolchain.sh; \
 	cd "${NCS_INSTALL_DIR}/${NCS_VERSION}" && west zephyr-export
 
