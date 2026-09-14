@@ -8,16 +8,11 @@ on:
         required: true
         type: string
       board:
-        description: west build board target, e.g. weight_sensor/nrf54l15/cpuapp
+        description: Zephyr board target, e.g. weight_sensor/nrf54l15/cpuapp
         required: true
         type: string
-      app_dir:
-        description: Path to the application source, relative to the repo root
-        required: false
-        type: string
-        default: .
       build_dir:
-        description: Path to the west build output directory, relative to the repo root
+        description: Path to the CMake build output directory, relative to the repo root
         required: false
         type: string
         default: build
@@ -25,14 +20,19 @@ on:
         description: Path to the root folder with custom board definitions, relative to the repo root
         required: false
         type: string
-        default: .
+        default: ''
       build_type:
         description: 'CMake build type. One of: Debug, Release, RelWithDebInfo, MinSizeRel.'
         required: false
         type: string
         default: MinSizeRel
-      extra_west_args:
-        description: Extra arguments appended to the west build invocation (after the CMake --)
+      extra_cmake_args:
+        description: Extra arguments appended to the CMake configure invocation
+        required: false
+        type: string
+        default: ''
+      cmake_preset:
+        description: Name of an existing preset in the repo's CMakePresets.json to build with, instead of generating a "release" preset
         required: false
         type: string
         default: ''
@@ -113,32 +113,58 @@ jobs:
             chmod 600 key.pem
           fi
 
-
-      - name: Build (west build via nrfutil toolchain)
+      - name: Validate CMake preset
+        if: inputs.cmake_preset != ''
         env:
-          IMAGE: ${{ steps.image.outputs.name }}:${{ inputs.ncs_version }}
-          WORKSPACE: ${{ github.workspace }}
+          PRESET: ${{ inputs.cmake_preset }}
+        run: |
+          jq -e --arg name "$PRESET" 'any(.configurePresets[]?; .name == $name)' CMakePresets.json \
+            || { echo "::error::Preset '$PRESET' not found in CMakePresets.json"; exit 1; }
+
+      - name: Write CMake preset
+        if: inputs.cmake_preset == ''
+        env:
           BOARD: ${{ inputs.board }}
-          APP_DIR: ${{ inputs.app_dir }}
           BUILD_DIR: ${{ inputs.build_dir }}
           BOARD_ROOT_INPUT: ${{ inputs.board_root }}
           BUILD_TYPE: ${{ steps.build_type.outputs.value }}
-          EXTRA_WEST_ARGS: ${{ inputs.extra_west_args }}
-        run: |          
+        run: |
+          cat > CMakePresets.json <<EOF
+          {
+            "version": 2,
+            "configurePresets": [
+              {
+                "name": "release",
+                "generator": "Ninja",
+                "binaryDir": "\${sourceDir}/${BUILD_DIR}",
+                "cacheVariables": {
+                  "BOARD": "${BOARD}",
+                  "BOARD_ROOT": "\${sourceDir}/${BOARD_ROOT_INPUT}",
+                  "CMAKE_BUILD_TYPE": "${BUILD_TYPE}"
+                }
+              }
+            ]
+          }
+          EOF
+
+      - name: Build
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ inputs.ncs_version }}
+          WORKSPACE: ${{ github.workspace }}
+          BUILD_DIR: ${{ inputs.build_dir }}
+          EXTRA_CMAKE_ARGS: ${{ inputs.extra_cmake_args }}
+          PRESET: ${{ inputs.cmake_preset != '' && inputs.cmake_preset || 'release' }}
+        run: |
           docker run --rm \
             -v "${WORKSPACE}:/workspace" \
             -w /workspace \
-            -e BOARD -e APP_DIR -e BUILD_DIR -e BOARD_ROOT_INPUT -e BUILD_TYPE -e EXTRA_WEST_ARGS \
+            -e BUILD_DIR -e EXTRA_CMAKE_ARGS -e PRESET \
             "${IMAGE}" \
             bash -c ' \
               set -eux; \
-              BOARD_ROOT_ABS=$(cd "/workspace/$BOARD_ROOT_INPUT" && pwd); \
-              nrfutil sdk-manager toolchain launch \
-                --ncs-version "$NCS_VERSION" \
-                --install-dir "$NCS_INSTALL_DIR" \
-                --chdir "$NCS_INSTALL_DIR/$NCS_VERSION" \
-                -- west build -b "$BOARD" -s "/workspace/$APP_DIR" -d "/workspace/$BUILD_DIR" \
-                -- -DBOARD_ROOT="$BOARD_ROOT_ABS" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $EXTRA_WEST_ARGS \
+              . /etc/profile.d/nrf-toolchain.sh; \
+              cmake --preset "$PRESET" $EXTRA_CMAKE_ARGS; \
+              cmake --build "/workspace/$BUILD_DIR" \
             '
 
       - name: Remove signing key
