@@ -9,8 +9,9 @@ on:
         type: string
       board:
         description: Zephyr board target, e.g. weight_sensor/nrf54l15/cpuapp
-        required: true
+        required: false
         type: string
+        default: ''
       build_dir:
         description: Path to the CMake build output directory, relative to the repo root
         required: false
