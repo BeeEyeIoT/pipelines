@@ -37,12 +37,12 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          target: build-base
+          target: result
           push: true
           build-args: |
             NCS_VERSION=${{ inputs.ncs_version }}
+            VARIANT=install-sdk
           tags: |
             ${{ steps.image.outputs.name }}:${{ inputs.ncs_version }}
-            ${{ steps.image.outputs.name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

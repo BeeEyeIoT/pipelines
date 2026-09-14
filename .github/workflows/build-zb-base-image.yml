@@ -60,11 +60,12 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          target: build-base-zb-r23
+          target: result
           push: true
           build-args: |
             NCS_VERSION=${{ steps.ncs.outputs.value }}
             ZB_R23_VERSION=v${{ inputs.ncs_zb_version }}
+            VARIANT=install-zb-addon
           tags: |
             ${{ steps.image.outputs.name }}:zb-r23-${{ inputs.ncs_zb_version }}
           cache-from: type=gha
