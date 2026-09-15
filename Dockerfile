@@ -75,14 +75,19 @@ RUN set -eux; \
 ENV ZB_R23_VERSION=${ZB_R23_VERSION}
 
 FROM ${VARIANT} AS staging
-# .git metadata (full history + Matter/cmock submodules) is only needed for
-# west's own git operations in the stages above. Deleting it here does NOT
-# shrink install-sdk/install-zb-addon themselves - in a layered image the
-# bytes stay in the layer that created them even after a later layer deletes
-# them. It only pays off because `result` below COPYs this stage's resulting
-# filesystem instead of stacking on top of its layers.
+
+# reduce image size
 RUN set -eux; \
-	find "${NCS_INSTALL_DIR}" -name '.git' -prune -exec rm -rf {} +
+	NCS_DIR="${NCS_INSTALL_DIR}/${NCS_VERSION}"; \
+	for repo_dir in "${NCS_DIR}/nrf" "${NCS_DIR}/nrfxlib" "${ZEPHYR_BASE}"; do \
+		remote_name="$(git -C "${repo_dir}" remote | head -n1)"; \
+		remote_url="$(git -C "${repo_dir}" remote get-url "${remote_name}")"; \
+		tag="$(git -C "${repo_dir}" describe --tags --exact-match)"; \
+		rm -rf "${repo_dir}"; \
+		git clone --branch "${tag}" --depth 1 --recursive --shallow-submodules "${remote_url}" "${repo_dir}"; \
+	done; \
+	. /etc/profile.d/nrf-toolchain.sh; \
+	cd "${NCS_DIR}" && west update
 
 FROM nrfutil AS result
 ARG NCS_VERSION
