@@ -37,6 +37,11 @@ on:
         required: false
         type: string
         default: ''
+      use_sysbuild:
+        description: Build using Zephyr sysbuild (multi-image) instead of a single CMake preset build. Incompatible with cmake_preset.
+        required: false
+        type: boolean
+        default: false
       base_image:
         description: 'build-base image, without tag (default: ghcr.io/<org>/build-base)'
         required: false
@@ -48,11 +53,10 @@ on:
         type: string
         default: firmware
       artifact_paths:
-        description: Newline-separated list of build output files/globs to publish as the artifact, relative to build_dir
+        description: Newline-separated list of build output files/globs to publish as the artifact, relative to build_dir. Defaults to dfu_application.zip + merged.hex for sysbuild, or zephyr/zephyr.hex otherwise.
         required: false
         type: string
-        default: |          
-          dfu_application.zip
+        default: ''
     secrets:
       mcuboot_key_pem:
         description: MCUboot signing key (PEM), written to key.pem at the repo root before building
@@ -66,15 +70,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - name: Validate build type
-        id: build_type
+      - name: Validate inputs
+        id: validate
         env:
           BUILD_TYPE: ${{ inputs.build_type }}
+          USE_SYSBUILD: ${{ inputs.use_sysbuild }}
+          CMAKE_PRESET: ${{ inputs.cmake_preset }}
+          MCUBOOT_KEY_PEM: ${{ secrets.mcuboot_key_pem }}
         run: |
           case "$BUILD_TYPE" in
             Debug|Release|RelWithDebInfo|MinSizeRel) ;;
@@ -83,7 +85,41 @@ jobs:
               BUILD_TYPE=MinSizeRel
               ;;
           esac
-          echo "value=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
+          echo "build_type=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
+
+          if [ "$USE_SYSBUILD" = "true" ] && [ -n "$CMAKE_PRESET" ]; then
+            echo "::error::use_sysbuild is incompatible with cmake_preset. Unset cmake_preset when using sysbuild."
+            exit 1
+          fi
+
+          if [ "$USE_SYSBUILD" = "true" ] && [ -z "$MCUBOOT_KEY_PEM" ]; then
+            echo "::error::use_sysbuild requires the mcuboot_key_pem secret to be set."
+            exit 1
+          fi
+
+      - name: Set defaults
+        id: defaults
+        env:
+          ARTIFACT_PATHS: ${{ inputs.artifact_paths }}
+          USE_SYSBUILD: ${{ inputs.use_sysbuild }}
+        run: |
+          if [ -n "$ARTIFACT_PATHS" ]; then
+            paths="$ARTIFACT_PATHS"
+          elif [ "$USE_SYSBUILD" = "true" ]; then
+            paths="$(printf 'dfu_application.zip\nmerged.hex')"
+          else
+            paths="zephyr/zephyr.hex"
+          fi
+          {
+            echo "artifact_paths<<PATHS_EOF"
+            echo "$paths"
+            echo "PATHS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Compute lowercase image name
         id: image
@@ -106,15 +142,15 @@ jobs:
           docker pull "${{ steps.image.outputs.name }}:${{ inputs.ncs_version }}"          
 
       - name: Write MCUboot signing key
+        if: inputs.use_sysbuild == 'true'
         env:
           MCUBOOT_KEY_PEM: ${{ secrets.mcuboot_key_pem }}
         run: |
-          if [ -n "$MCUBOOT_KEY_PEM" ]; then
-            echo "$MCUBOOT_KEY_PEM" > key.pem
-            chmod 600 key.pem
-          fi
+          echo "$MCUBOOT_KEY_PEM" > key.pem
+          chmod 600 key.pem
 
       - name: Validate CMake preset
+        # Requires the checked-out CMakePresets.json, so it can't join the pre-checkout validation step.
         if: inputs.cmake_preset != ''
         env:
           PRESET: ${{ inputs.cmake_preset }}
@@ -123,12 +159,12 @@ jobs:
             || { echo "::error::Preset '$PRESET' not found in CMakePresets.json"; exit 1; }
 
       - name: Write CMake preset
-        if: inputs.cmake_preset == ''
+        if: inputs.cmake_preset == '' && inputs.use_sysbuild != 'true'
         env:
           BOARD: ${{ inputs.board }}
           BUILD_DIR: ${{ inputs.build_dir }}
           BOARD_ROOT_INPUT: ${{ inputs.board_root }}
-          BUILD_TYPE: ${{ steps.build_type.outputs.value }}
+          BUILD_TYPE: ${{ steps.validate.outputs.build_type }}
         run: |
           cat > CMakePresets.json <<EOF
           {
@@ -155,16 +191,30 @@ jobs:
           BUILD_DIR: ${{ inputs.build_dir }}
           EXTRA_CMAKE_ARGS: ${{ inputs.extra_cmake_args }}
           PRESET: ${{ inputs.cmake_preset != '' && inputs.cmake_preset || 'release' }}
+          USE_SYSBUILD: ${{ inputs.use_sysbuild }}
+          BOARD: ${{ inputs.board }}
+          BOARD_ROOT_INPUT: ${{ inputs.board_root }}
+          BUILD_TYPE: ${{ steps.validate.outputs.build_type }}
         run: |
           docker run --rm \
             -v "${WORKSPACE}:/workspace" \
             -w /workspace \
-            -e BUILD_DIR -e EXTRA_CMAKE_ARGS -e PRESET \
+            -e BUILD_DIR -e EXTRA_CMAKE_ARGS -e PRESET -e USE_SYSBUILD -e BOARD -e BOARD_ROOT_INPUT -e BUILD_TYPE \
             "${IMAGE}" \
             bash -c ' \
               set -eux; \
               . /etc/profile.d/nrf-toolchain.sh; \
-              cmake --preset "$PRESET" $EXTRA_CMAKE_ARGS; \
+              if [ "$USE_SYSBUILD" = "true" ]; then \
+                cmake -S "$ZEPHYR_BASE/share/sysbuild" \
+                  -B "$BUILD_DIR" \
+                  -DAPP_DIR="$PWD" \
+                  -DBOARD="$BOARD" \
+                  -DBOARD_ROOT="$PWD/$BOARD_ROOT_INPUT" \
+                  -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+                  $EXTRA_CMAKE_ARGS; \
+              else \
+                cmake --preset "$PRESET" $EXTRA_CMAKE_ARGS; \
+              fi; \
               cmake --build "/workspace/$BUILD_DIR" \
             '
 
@@ -176,7 +226,7 @@ jobs:
         id: artifact_paths
         env:
           BUILD_DIR: ${{ inputs.build_dir }}
-          ARTIFACT_PATHS: ${{ inputs.artifact_paths }}
+          ARTIFACT_PATHS: ${{ steps.defaults.outputs.artifact_paths }}
         run: |
           {
             echo "paths<<PATHS_EOF"
